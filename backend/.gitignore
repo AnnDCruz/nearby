@@ -1,0 +1,5 @@
+node_modules
+.env
+nearby.db
+nearby.db-wal
+nearby.db-shm
