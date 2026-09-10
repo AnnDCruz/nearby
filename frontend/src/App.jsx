@@ -64,7 +64,7 @@ export default function App() {
           ) : (
             <>
               {tab === "map" && <MapTab online={online} />}
-              {tab === "friends" && <FriendsTab online={online} />}
+              {tab === "friends" && <FriendsTab online={online} user={user} />}
               {tab === "saved" && <SavedTab online={online} />}
               {tab === "profile" && <ProfileTab user={user} onLogout={handleLogout} />}
             </>

@@ -15,12 +15,17 @@ function timeAgo(iso) {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
-export default function FriendsTab({ online }) {
+export default function FriendsTab({ online, user }) {
   const [feed, setFeed] = useState([]);
   const [loading, setLoading] = useState(true);
   const [handle, setHandle] = useState("");
   const [addStatus, setAddStatus] = useState(null); // {ok, message}
   const [adding, setAdding] = useState(false);
+
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState("");
 
   useEffect(() => {
     if (!online) {
@@ -50,6 +55,33 @@ export default function FriendsTab({ online }) {
       setAddStatus({ ok: false, message: err.message });
     } finally {
       setAdding(false);
+    }
+  }
+
+  async function postUpdate(e) {
+    e.preventDefault();
+    if (!message.trim()) return;
+    setPosting(true);
+    setPostError("");
+    try {
+      const res = await api.postUpdate(message.trim(), null);
+      setFeed((prev) => [
+        {
+          id: res.id,
+          authorName: user?.name || "You",
+          authorType: "explorer",
+          message: message.trim(),
+          createdAt: new Date().toISOString().replace("Z", ""),
+          place: null,
+        },
+        ...prev,
+      ]);
+      setMessage("");
+      setComposerOpen(false);
+    } catch (err) {
+      setPostError(err.message || "Couldn't post that update. Try again.");
+    } finally {
+      setPosting(false);
     }
   }
 
@@ -98,6 +130,52 @@ export default function FriendsTab({ online }) {
           </div>
         )}
       </form>
+
+      <div style={{ padding: "12px 16px 0" }}>
+        {!composerOpen ? (
+          <button
+            className="btn-primary"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+            onClick={() => setComposerOpen(true)}
+          >
+            <span>＋</span> Post an update
+          </button>
+        ) : (
+          <form onSubmit={postUpdate} className="card" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <textarea
+              autoFocus
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="What's good right now? (e.g. this place is buzzing, short queue, great sunset...)"
+              rows={3}
+              style={{
+                width: "100%",
+                border: "1.5px solid var(--line)",
+                borderRadius: "var(--radius-sm)",
+                padding: 10,
+                fontSize: 13.5,
+                fontFamily: "inherit",
+                resize: "none",
+                outline: "none",
+              }}
+            />
+            {postError && <div className="form-error">{postError}</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => { setComposerOpen(false); setMessage(""); setPostError(""); }}
+                style={{ flex: 1 }}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={posting || !message.trim()}>
+                {posting ? <Spinner /> : "Post"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
 
       <div style={{ padding: "16px 16px 0" }}>
         {loading ? (
