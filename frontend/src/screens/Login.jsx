@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, storeSession } from "../api";
 import TopoBackground from "../components/TopoBackground";
-import { Spinner } from "../components/Atoms";
+import { Spinner, VisibilityIcon } from "../components/Atoms";
 
 export default function Login({ onAuthed }) {
   const [mode, setMode] = useState("login"); // 'login' | 'signup'
@@ -98,7 +98,7 @@ export default function Login({ onAuthed }) {
                   borderRadius: "50%",
                 }}
               >
-                {showPassword ? "🙈" : "👁️"}
+                {showPassword ? <VisibilityIcon off /> : <VisibilityIcon />}
               </button>
             </div>
           </div>

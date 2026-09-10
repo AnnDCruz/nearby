@@ -48,6 +48,30 @@ function RecenterOnFirstFix({ center }) {
   return null;
 }
 
+const searchIcon = L.divIcon({
+  className: "",
+  html: `
+    <div style="
+      width:30px;height:30px;border-radius:50% 50% 50% 4px;transform:rotate(45deg);
+      background:var(--blaze,#e2672a);border:2.5px solid #fffdf7;
+      box-shadow:0 3px 8px rgba(30,42,32,0.35);
+      display:flex;align-items:center;justify-content:center;
+    ">
+      <span style="transform:rotate(-45deg);font-size:14px;">📍</span>
+    </div>`,
+  iconSize: [30, 30],
+  iconAnchor: [15, 30],
+});
+
+// Flies the map to a searched location whenever a new search result comes in.
+function FlyToSearchResult({ target }) {
+  const map = useMap();
+  useEffect(() => {
+    if (target) map.flyTo([target.lat, target.lng], 15, { duration: 1 });
+  }, [target, map]);
+  return null;
+}
+
 function ManualLocationClickHandler({ enabled, onPick }) {
   useMapEvents({
     click(e) {
@@ -64,6 +88,7 @@ export default function LeafletMapView({
   userLocation,
   locStatus,
   onManualLocation,
+  searchTarget,
 }) {
   const center = userLocation || { lat: 25.2048, lng: 55.2708 };
   const canPickManually = locStatus === "denied" || locStatus === "unavailable";
@@ -84,13 +109,16 @@ export default function LeafletMapView({
       style={{ position: "absolute", inset: 0, width: "100%", height: "100%", background: "var(--paper)" }}
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution='Wikimedia maps beta | Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        url="https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}{r}.png?lang=en"
+        detectRetina
       />
       <RecenterOnFirstFix center={userLocation} />
       <ManualLocationClickHandler enabled={canPickManually} onPick={onManualLocation} />
+      <FlyToSearchResult target={searchTarget} />
 
       {userLocation && <Marker position={[userLocation.lat, userLocation.lng]} icon={userIcon} />}
+      {searchTarget && <Marker position={[searchTarget.lat, searchTarget.lng]} icon={searchIcon} />}
 
       {places.map((p) => (
         <Marker

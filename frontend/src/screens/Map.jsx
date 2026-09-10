@@ -8,7 +8,7 @@ import {
   queuePendingSync,
   isPendingSync,
 } from "../api";
-import { CATEGORIES, CategoryBadge, LiveDot, OfflineBanner } from "../components/Atoms";
+import { CATEGORIES, CategoryBadge, LiveDot, OfflineBanner, Spinner } from "../components/Atoms";
 import TopoBackground from "../components/TopoBackground";
 import LeafletMapView from "../components/LeafletMapView";
 import { useGeolocation } from "../hooks/useGeolocation";
@@ -34,6 +34,33 @@ export default function MapTab({ online }) {
   const [activeId, setActiveId] = useState(null);
   const [loading, setLoading] = useState(places.length === 0);
   const { coords: userLocation, status: locStatus, setManual } = useGeolocation();
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchTarget, setSearchTarget] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+
+  async function runSearch(e) {
+    e.preventDefault();
+    if (!searchQuery.trim() || !online) return;
+    setSearching(true);
+    setSearchError("");
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(searchQuery.trim())}`
+      );
+      const results = await res.json();
+      if (!results.length) {
+        setSearchError("No matching location found.");
+        return;
+      }
+      setSearchTarget({ lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon), label: results[0].display_name });
+    } catch {
+      setSearchError("Couldn't search right now — check your connection.");
+    } finally {
+      setSearching(false);
+    }
+  }
 
   useEffect(() => {
     if (!online) return;
@@ -104,19 +131,47 @@ export default function MapTab({ online }) {
         </div>
       )}
 
-      {online && locStatus === "denied" && (
+      {online && (
         <div style={{ position: "absolute", top: 12, left: 16, right: 16, zIndex: 1000 }}>
+          <form onSubmit={runSearch} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--white)", border: "1.5px solid var(--line)", borderRadius: 999, padding: "6px 6px 6px 14px", boxShadow: "0 4px 10px rgba(30,42,32,0.12)" }}>
+            <span style={{ fontSize: 14 }}>🔍</span>
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search for a place or address"
+              style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 13, padding: "6px 0" }}
+            />
+            {searchTarget && (
+              <button
+                type="button"
+                onClick={() => { setSearchTarget(null); setSearchQuery(""); setSearchError(""); }}
+                style={{ fontSize: 13, color: "var(--stone)", padding: "0 4px" }}
+                aria-label="Clear search"
+              >
+                ✕
+              </button>
+            )}
+            <button type="submit" className="btn-primary" style={{ width: "auto", padding: "8px 16px", fontSize: 13 }} disabled={searching}>
+              {searching ? <Spinner /> : "Go"}
+            </button>
+          </form>
+          {searchError && <div className="form-error" style={{ marginTop: 6 }}>{searchError}</div>}
+        </div>
+      )}
+
+      {online && locStatus === "denied" && (
+        <div style={{ position: "absolute", top: 68, left: 16, right: 16, zIndex: 1000 }}>
           <OfflineBanner text="Location access denied — tap anywhere on the map to set your area manually." />
         </div>
       )}
       {online && locStatus === "manual" && (
-        <div style={{ position: "absolute", top: 12, left: 16, right: 16, zIndex: 1000 }}>
+        <div style={{ position: "absolute", top: 68, left: 16, right: 16, zIndex: 1000 }}>
           <OfflineBanner text="Using the spot you tapped as your location. Tap the map again to adjust." />
         </div>
       )}
 
       {online && (
-        <div style={{ position: "absolute", top: locStatus === "denied" || locStatus === "manual" ? 68 : 12, left: 0, right: 0, zIndex: 1000, padding: "0 16px", transition: "top 0.15s ease" }}>
+        <div style={{ position: "absolute", top: locStatus === "denied" || locStatus === "manual" ? 124 : 68, left: 0, right: 0, zIndex: 1000, padding: "0 16px", transition: "top 0.15s ease" }}>
           <div className="no-scrollbar" style={{ display: "flex", gap: 8, overflowX: "auto" }}>
             {FILTERS.map((f) => (
               <button
@@ -158,6 +213,7 @@ export default function MapTab({ online }) {
               userLocation={userLocation}
               locStatus={locStatus}
               onManualLocation={setManual}
+              searchTarget={searchTarget}
             />
           ) : (
             <div style={{ position: "absolute", inset: 0, paddingTop: 12 }}>
