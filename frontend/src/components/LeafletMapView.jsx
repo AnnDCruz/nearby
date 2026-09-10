@@ -109,8 +109,9 @@ export default function LeafletMapView({
       style={{ position: "absolute", inset: 0, width: "100%", height: "100%", background: "var(--paper)" }}
     >
       <TileLayer
-        attribution='Wikimedia maps beta | Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}{r}.png?lang=en"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+        subdomains="abcd"
         detectRetina
       />
       <RecenterOnFirstFix center={userLocation} />
