@@ -10,12 +10,15 @@ import {
 } from "../api";
 import { CATEGORIES, CategoryBadge, LiveDot, OfflineBanner } from "../components/Atoms";
 import TopoBackground from "../components/TopoBackground";
+import LeafletMapView from "../components/LeafletMapView";
+import { useGeolocation } from "../hooks/useGeolocation";
+import { distanceKm, formatDistance } from "../utils/geo";
 
 const FILTERS = ["All", "Food", "Events", "Activities"];
 const FILTER_MAP = { All: null, Food: "food", Events: "event", Activities: "activity" };
 
-// Deterministic pseudo-position on the map canvas, so pins don't jump around
-// between renders (we don't have real device GPS wiring in this MVP).
+// Offline-only fallback layout: a deterministic pseudo-position on a static
+// canvas, since real map tiles need a network connection we don't have.
 function pinPosition(id) {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
@@ -30,6 +33,7 @@ export default function MapTab({ online }) {
   const [filter, setFilter] = useState("All");
   const [activeId, setActiveId] = useState(null);
   const [loading, setLoading] = useState(places.length === 0);
+  const { coords: userLocation, status: locStatus, setManual } = useGeolocation();
 
   useEffect(() => {
     if (!online) return;
@@ -58,7 +62,17 @@ export default function MapTab({ online }) {
     return places.filter((p) => !wanted || p.category === wanted);
   }, [places, filter]);
 
-  const active = filtered.find((p) => p.id === activeId);
+  // When we have a real (or manually-set) location, show live distance
+  // instead of the static seeded label.
+  const filteredWithDistance = useMemo(() => {
+    if (!userLocation) return filtered;
+    return filtered.map((p) => ({
+      ...p,
+      liveDistance: formatDistance(distanceKm(userLocation.lat, userLocation.lng, p.lat, p.lng)),
+    }));
+  }, [filtered, userLocation]);
+
+  const active = filteredWithDistance.find((p) => p.id === activeId);
 
   async function toggleSave(place) {
     const willSave = !savedIds.has(place.id);
@@ -82,12 +96,27 @@ export default function MapTab({ online }) {
 
   return (
     <div style={{ position: "relative", height: "100%", background: "var(--paper)" }}>
-      <TopoBackground dimmed={!online} />
+      {!online && <TopoBackground dimmed />}
 
-      {!online && <OfflineBanner text="You're offline — showing your last saved view of what's nearby." />}
+      {!online && (
+        <div style={{ position: "relative", zIndex: 1000 }}>
+          <OfflineBanner text="You're offline — showing your last saved view of what's nearby." />
+        </div>
+      )}
+
+      {online && locStatus === "denied" && (
+        <div style={{ position: "absolute", top: 12, left: 16, right: 16, zIndex: 1000 }}>
+          <OfflineBanner text="Location access denied — tap anywhere on the map to set your area manually." />
+        </div>
+      )}
+      {online && locStatus === "manual" && (
+        <div style={{ position: "absolute", top: 12, left: 16, right: 16, zIndex: 1000 }}>
+          <OfflineBanner text="Using the spot you tapped as your location. Tap the map again to adjust." />
+        </div>
+      )}
 
       {online && (
-        <div style={{ position: "absolute", top: 12, left: 0, right: 0, zIndex: 5, padding: "0 16px" }}>
+        <div style={{ position: "absolute", top: locStatus === "denied" || locStatus === "manual" ? 68 : 12, left: 0, right: 0, zIndex: 1000, padding: "0 16px", transition: "top 0.15s ease" }}>
           <div className="no-scrollbar" style={{ display: "flex", gap: 8, overflowX: "auto" }}>
             {FILTERS.map((f) => (
               <button
@@ -102,6 +131,7 @@ export default function MapTab({ online }) {
                   border: `1.5px solid ${filter === f ? "var(--forest)" : "var(--line)"}`,
                   background: filter === f ? "var(--forest)" : "var(--white)",
                   color: filter === f ? "var(--white)" : "var(--stone)",
+                  boxShadow: "0 4px 10px rgba(30,42,32,0.12)",
                 }}
               >
                 {f}
@@ -120,57 +150,68 @@ export default function MapTab({ online }) {
         </div>
       ) : (
         <>
-          <div style={{ position: "absolute", inset: 0, paddingTop: online ? 64 : 12 }}>
-            {filtered.map((p) => {
-              const pos = pinPosition(p.id);
-              const isActive = p.id === activeId;
-              const cat = CATEGORIES[p.category] || CATEGORIES.food;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => setActiveId(isActive ? null : p.id)}
-                  style={{
-                    position: "absolute",
-                    left: `${pos.x}%`,
-                    top: `${pos.y}%`,
-                    transform: `translate(-50%, -100%) scale(${isActive ? 1.12 : 1})`,
-                    zIndex: isActive ? 20 : 10,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
-                  <div
+          {online ? (
+            <LeafletMapView
+              places={filteredWithDistance}
+              activeId={activeId}
+              onSelect={setActiveId}
+              userLocation={userLocation}
+              locStatus={locStatus}
+              onManualLocation={setManual}
+            />
+          ) : (
+            <div style={{ position: "absolute", inset: 0, paddingTop: 12 }}>
+              {filtered.map((p) => {
+                const pos = pinPosition(p.id);
+                const isActive = p.id === activeId;
+                const cat = CATEGORIES[p.category] || CATEGORIES.food;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setActiveId(isActive ? null : p.id)}
                     style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: "50% 50% 50% 4px",
-                      transform: "rotate(45deg)",
-                      background: online ? cat.color : "var(--stone-soft)",
-                      border: "2.5px solid var(--white)",
-                      boxShadow: "0 3px 8px rgba(30,42,32,0.25)",
+                      position: "absolute",
+                      left: `${pos.x}%`,
+                      top: `${pos.y}%`,
+                      transform: `translate(-50%, -100%) scale(${isActive ? 1.12 : 1})`,
+                      zIndex: isActive ? 20 : 10,
                       display: "flex",
+                      flexDirection: "column",
                       alignItems: "center",
-                      justifyContent: "center",
+                      gap: 4,
                     }}
                   >
-                    <span style={{ transform: "rotate(-45deg)", fontSize: 14 }}>{cat.emoji}</span>
-                  </div>
-                  {isActive && (
-                    <span style={{ background: "var(--ink)", color: "var(--white)", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6, whiteSpace: "nowrap" }}>
-                      {p.name}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+                    <div
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: "50% 50% 50% 4px",
+                        transform: "rotate(45deg)",
+                        background: "var(--stone-soft)",
+                        border: "2.5px solid var(--white)",
+                        boxShadow: "0 3px 8px rgba(30,42,32,0.25)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <span style={{ transform: "rotate(-45deg)", fontSize: 14 }}>{cat.emoji}</span>
+                    </div>
+                    {isActive && (
+                      <span style={{ background: "var(--ink)", color: "var(--white)", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6, whiteSpace: "nowrap" }}>
+                        {p.name}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {!active && (
-            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 15, paddingBottom: 14 }}>
+            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 1000, paddingBottom: 14 }}>
               <div className="no-scrollbar" style={{ display: "flex", gap: 10, overflowX: "auto", padding: "8px 16px 0" }}>
-                {filtered.map((p) => (
+                {filteredWithDistance.map((p) => (
                   <button
                     key={p.id}
                     onClick={() => setActiveId(p.id)}
@@ -190,7 +231,7 @@ export default function MapTab({ online }) {
                       )}
                     </div>
                     <p style={{ fontWeight: 700, fontSize: 13, margin: 0 }}>{p.name}</p>
-                    <p style={{ fontSize: 11, color: "var(--stone)", margin: "3px 0 0" }}>{p.distance}</p>
+                    <p style={{ fontSize: 11, color: "var(--stone)", margin: "3px 0 0" }}>{p.liveDistance || p.distance}</p>
                   </button>
                 ))}
               </div>
@@ -198,14 +239,14 @@ export default function MapTab({ online }) {
           )}
 
           {active && (
-            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 30, background: "var(--white)", borderTop: "1.5px solid var(--line)", borderRadius: "20px 20px 0 0", padding: 20 }}>
+            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 1000, background: "var(--white)", borderTop: "1.5px solid var(--line)", borderRadius: "20px 20px 0 0", padding: 20 }}>
               <div style={{ width: 36, height: 4, background: "var(--line)", borderRadius: 999, margin: "0 auto 14px" }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                 <div>
                   <h3 className="display" style={{ fontSize: 19, margin: 0 }}>{active.name}</h3>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
                     <CategoryBadge cat={active.category} />
-                    <span style={{ fontSize: 11, color: "var(--stone)" }}>{active.distance}</span>
+                    <span style={{ fontSize: 11, color: "var(--stone)" }}>{active.liveDistance || active.distance}</span>
                   </div>
                 </div>
                 <button
